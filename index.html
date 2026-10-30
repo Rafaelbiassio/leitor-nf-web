@@ -1,0 +1,181 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Leitor de NF Cancelados</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
+<style>
+/* Layout: coluna única para celular; botão de captura grande no topo, resultados em lista logo abaixo. */
+:root{--bg:#f3f5f6;--card:#ffffff;--fg:#14232b;--mut:#5b6b73;--line:#d6dde1;--acc:#0b6b78;--acc-fg:#ffffff;--ok:#1b7a43;--okbg:#e2f3e8;--warn:#9a5b00;--warnbg:#fdf0d6;--bad:#b3261e;--badbg:#fbe4e2;--sans:"IBM Plex Sans",system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,monospace}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1a1f;--card:#17262d;--fg:#e6eef1;--mut:#93a5ad;--line:#2b3d46;--acc:#4cc2d1;--acc-fg:#06242a;--ok:#6fd49a;--okbg:#14301f;--warn:#f0b955;--warnbg:#352a10;--bad:#ff8f86;--badbg:#3a1815;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1a1f;--card:#17262d;--fg:#e6eef1;--mut:#93a5ad;--line:#2b3d46;--acc:#4cc2d1;--acc-fg:#06242a;--ok:#6fd49a;--okbg:#14301f;--warn:#f0b955;--warnbg:#352a10;--bad:#ff8f86;--badbg:#3a1815;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.45;padding-block:16px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+main{max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+h1{font-size:20px;margin:0;font-weight:600;text-wrap:balance}
+p{margin:0}.mut{color:var(--mut)}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.btn{appearance:none;border:0;background:var(--acc);color:var(--acc-fg);font:600 17px var(--sans);padding:16px;border-radius:10px;width:100%;text-align:center;cursor:pointer;display:block}
+.btn.sec{background:transparent;color:var(--acc);border:1px solid var(--acc);font-size:14px;padding:10px;width:auto}
+.btn:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+input[type=file]{display:none}
+.prog{display:flex;gap:16px;flex-wrap:wrap}
+.prog div{flex:1;min-width:120px}
+.prog b{display:block;font:500 22px var(--mono)}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden}.bar i{display:block;height:100%;background:var(--acc)}
+.row{border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.row .top{display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap}
+.nf{font:500 20px var(--mono)}
+.tag{font:600 12px var(--sans);padding:2px 8px;border-radius:99px;white-space:nowrap}
+.t-ok{background:var(--okbg);color:var(--ok)}.t-warn{background:var(--warnbg);color:var(--warn)}.t-bad{background:var(--badbg);color:var(--bad)}
+.small{font-size:13px;color:var(--mut);overflow-wrap:anywhere}
+.acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input[type=text],select{font:15px var(--mono);padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);width:100%;min-width:0}
+.sec-h{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+h2{font-size:15px;margin:0;font-weight:600}
+details summary{cursor:pointer;color:var(--acc);font-weight:500}
+.miss{max-height:260px;overflow:auto;display:flex;flex-direction:column;gap:4px}
+.miss div{display:flex;justify-content:space-between;gap:8px;font-size:13px;border-bottom:1px solid var(--line);padding:4px 0}
+#msg{min-height:1.4em}
+#res{display:none;border-radius:10px;padding:16px;font-weight:600;flex-direction:column;gap:4px}
+#res.show{display:flex}
+#res .big{font-size:24px;line-height:1.15;text-wrap:balance}
+#res.r-bad{background:var(--bad);color:#fff}
+#res.r-ok{background:var(--okbg);color:var(--ok);border:1px solid var(--ok)}
+#res small{font-weight:500;font-size:14px;opacity:.95}
+.row.nocanc{border-color:var(--bad);border-width:2px}
+</style>
+</head><body>
+<main>
+<header><h1>Leitor de NF dos cancelados</h1><p class="mut">Fotografe o código de barras da DANFE impressa. O sistema lê a chave de 44 dígitos, tira o número da NF e confere com os pedidos cancelados do ML e da Shopee.</p></header>
+
+<section class="card">
+<video id="vid" playsinline muted style="width:100%;border-radius:8px;background:#000;display:none;max-height:46vh;object-fit:cover"></video>
+<div class="acts"><button class="btn" id="camOn">Ligar câmera e escanear</button><button class="btn sec" id="camOff" hidden>Parar câmera</button></div>
+<p class="small">Aponte a câmera para o código de barras da NF. Ela lê sozinha, sem tirar foto, e segue lendo a próxima nota.</p>
+</section>
+
+<section class="card">
+<label for="wedge" class="small"><b>Leitor de código de barras (USB ou Bluetooth)</b>: toque no campo e passe o leitor na nota. A leitura é automática.</label>
+<input id="wedge" type="text" inputmode="none" autocomplete="off" placeholder="Campo do leitor: aponte e leia" autofocus>
+<label class="btn" for="cam" id="camBtn" tabindex="0">Fotografar NF</label>
+<input id="cam" type="file" accept="image/*" capture="environment" multiple>
+<div class="acts"><label class="btn sec" for="gal">Escolher fotos da galeria</label><input id="gal" type="file" accept="image/*" multiple></div>
+<p id="msg" class="small" role="status" aria-live="polite">Aponte para o código de barras, com a nota bem aberta e sem dobra sobre as barras.</p>
+</section>
+
+<section id="res" role="alert" aria-live="assertive"></section>
+
+<section class="card">
+<div class="sec-h"><h2>Progresso</h2><span class="small" id="progTxt"></span></div>
+<div class="bar"><i id="barI" style="width:0"></i></div>
+<div class="prog"><div><span class="small">Lidas</span><b id="nRead">0</b></div><div><span class="small">Batem com cancelados</span><b id="nHit">0</b></div><div><span class="small">Fora da lista</span><b id="nMiss">0</b></div></div>
+</section>
+
+<section class="card">
+<div class="sec-h"><h2>Notas lidas</h2><div class="acts"><button class="btn sec" id="exp">Exportar CSV</button><button class="btn sec" id="clr">Limpar</button></div></div>
+<div id="list" style="display:flex;flex-direction:column;gap:8px"><p class="mut">Nenhuma nota lida ainda. Toque em "Fotografar NF" para começar.</p></div>
+</section>
+
+<section class="card">
+<h2>Digitar a chave manualmente</h2>
+<input id="man" type="text" inputmode="numeric" placeholder="44 dígitos da chave de acesso" autocomplete="off">
+<div class="acts"><button class="btn sec" id="manBtn">Adicionar</button></div>
+</section>
+
+<section class="card">
+<details><summary>Notas dos cancelados que ainda faltam ler</summary><div class="miss" id="missList"></div></details>
+</section>
+</main>
+<script>
+const LOOK={"nf": {"9236": {"m": "ML"}, "9208": {"m": "ML"}, "9188": {"m": "ML"}, "9155": {"m": "ML"}, "9058": {"m": "ML"}, "8951": {"m": "ML"}, "8854": {"m": "ML"}, "8791": {"m": "ML"}, "8767": {"m": "ML"}, "8748": {"m": "ML"}, "8747": {"m": "ML"}, "8683": {"m": "ML"}, "8629": {"m": "ML"}, "8557": {"m": "ML"}, "8542": {"m": "ML"}, "8492": {"m": "ML"}, "8310": {"m": "ML"}, "8142": {"m": "ML"}, "8134": {"m": "ML"}, "8131": {"m": "ML"}, "8120": {"m": "ML"}, "8018": {"m": "ML"}, "7937": {"m": "ML"}, "7900": {"m": "ML"}, "7678": {"m": "Shopee"}, "7731": {"m": "Shopee"}, "7787": {"m": "Shopee"}, "7796": {"m": "Shopee"}, "7872": {"m": "Shopee"}, "7874": {"m": "Shopee"}, "7875": {"m": "Shopee"}, "8021": {"m": "Shopee"}, "8105": {"m": "Shopee"}, "8121": {"m": "Shopee"}, "8123": {"m": "Shopee"}, "8136": {"m": "Shopee"}, "8138": {"m": "Shopee"}, "8140": {"m": "Shopee"}, "8141": {"m": "Shopee"}, "8143": {"m": "Shopee"}, "8146": {"m": "Shopee"}, "8148": {"m": "Shopee"}, "8149": {"m": "Shopee"}, "8152": {"m": "Shopee"}, "8244": {"m": "Shopee"}, "8235": {"m": "Shopee"}, "8268": {"m": "Shopee"}, "8420": {"m": "Shopee"}, "8422": {"m": "Shopee"}, "8428": {"m": "Shopee"}, "8485": {"m": "Shopee"}, "8584": {"m": "Shopee"}, "8686": {"m": "Shopee"}, "8924": {"m": "Shopee"}, "8989": {"m": "Shopee"}, "8997": {"m": "Shopee"}, "8920": {"m": "Shopee"}, "9134": {"m": "Shopee"}, "9138": {"m": "Shopee"}, "9220": {"m": "Shopee"}, "9223": {"m": "Shopee"}, "9269": {"m": "Shopee"}, "9292": {"m": "Shopee"}, "9379": {"m": "Shopee"}, "9391": {"m": "Shopee"}, "7842": {"m": "ML"}, "7846": {"m": "ML"}, "7912": {"m": "ML"}, "7926": {"m": "ML"}, "8108": {"m": "ML"}, "8333": {"m": "ML"}, "8362": {"m": "ML"}, "8414": {"m": "ML"}, "8466": {"m": "ML"}, "8514": {"m": "ML"}, "8543": {"m": "ML"}, "8661": {"m": "ML"}, "8693": {"m": "ML"}, "8729": {"m": "ML"}, "8826": {"m": "ML"}, "8829": {"m": "ML"}, "8870": {"m": "ML"}, "8900": {"m": "ML"}, "9132": {"m": "ML"}, "9183": {"m": "ML"}, "9195": {"m": "ML"}, "9426": {"m": "ML"}}, "pend": []};
+const NF=LOOK.nf,PEND=LOOK.pend;
+const KEY="nfscan.v1";
+let recs=[];
+try{recs=JSON.parse(localStorage.getItem(KEY)||"[]")}catch(e){}
+const $=id=>document.getElementById(id);
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(recs))}catch(e){}};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function dvOk(c){let s=0,w=2;for(let i=42;i>=0;i--){s+=+c[i]*w;w=w==9?2:w+1}const r=s%11;const d=r<2?0:11-r;return d==+c[43]}
+function parse(ch){const c=ch.replace(/\D/g,"");if(c.length!==44)return null;
+ return{chave:c,num:String(parseInt(c.slice(25,34),10)),serie:String(parseInt(c.slice(22,25),10)),cnpj:c.slice(6,20),aamm:c.slice(4,6)+"/20"+c.slice(2,4),modelo:c.slice(20,22),dv:dvOk(c)}}
+function fmtCnpj(s){return s.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,"$1.$2.$3/$4-$5")}
+function add(ch,src){const p=parse(ch);if(!p)return"inv";if(recs.some(r=>r.chave===p.chave))return"dup";
+ if(!p.dv)return"dv";recs.unshift({...p,src,ts:new Date().toISOString()});save();render();return"ok"}
+function matchOf(r){if(r.link)return PEND.find(x=>x.o===r.link)?{m:"ML",o:r.link,d:PEND.find(x=>x.o===r.link).d,p:PEND.find(x=>x.o===r.link).p,manual:true}:null;return NF[r.num]||null}
+function render(){
+ const hit=recs.filter(r=>matchOf(r)).length;
+ $("nRead").textContent=recs.length;$("nHit").textContent=hit;$("nMiss").textContent=recs.length-hit;
+ const total=Object.keys(NF).length+PEND.length;const got=new Set(recs.map(r=>r.link||r.num).filter(k=>NF[k]||PEND.some(x=>x.o===k)));
+ $("progTxt").textContent=got.size+" de "+total+" notas esperadas";$("barI").style.width=(100*got.size/total)+"%";
+ const L=$("list");
+ if(!recs.length){L.innerHTML='<p class="mut">Nenhuma nota lida ainda. Toque em "Fotografar NF" para começar.</p>'}
+ else L.innerHTML=recs.map((r,i)=>{const m=matchOf(r);
+  let tag,body;
+  if(m){tag='<span class="tag t-ok">'+esc(m.m)+(m.manual?" · vinculada":"")+'</span>';body='<div class="small">Pedido cancelado'+(m.o?' '+esc(m.o):'')+'</div>'}
+  else{tag='<span class="tag t-bad">NÃO RASGUE</span>';body='<div class="small"><b style="color:var(--bad)">Não rasgue essa nota.</b> Ela não é de um pedido cancelado conhecido.</div>'+
+   (PEND.length?'<div class="acts"><select data-i="'+i+'" class="lk" aria-label="Vincular a pedido do ML"><option value="">Vincular a pedido ML sem número…</option>'+PEND.filter(x=>!recs.some(y=>y.link===x.o)).map(x=>'<option value="'+x.o+'">'+x.o+' · '+esc(x.d)+'</option>').join("")+'</select></div>':"")}
+  return'<div class="row'+(m?'':' nocanc')+'"><div class="top"><span class="nf">NF '+esc(r.num)+'</span>'+tag+'</div>'+body+'<div class="small mono">série '+esc(r.serie)+' · emissor '+fmtCnpj(r.cnpj)+' · '+esc(r.aamm)+'</div><div class="acts"><button class="btn sec rm" data-i="'+i+'">Remover</button></div></div>'}).join("");
+ L.querySelectorAll(".rm").forEach(b=>b.onclick=()=>{recs.splice(+b.dataset.i,1);save();showRes(null);render()});
+ L.querySelectorAll(".lk").forEach(s=>s.onchange=()=>{if(s.value){recs[+s.dataset.i].link=s.value;save();showRes(recs[+s.dataset.i]);render()}});
+ const M=$("missList");const gotN=new Set(recs.map(r=>r.num));
+ const miss=Object.entries(NF).filter(([n])=>!gotN.has(n)).sort((a,b)=>a[0]-b[0]);
+ M.innerHTML=miss.map(([n,v])=>'<div><span class="mono">NF '+n+'</span><span>'+v.m+' · '+esc(v.o)+'</span></div>').join("")+PEND.filter(x=>!recs.some(r=>r.link===x.o)).map(x=>'<div><span class="mono">nº ?</span><span>ML · '+x.o+'</span></div>').join("")||'<p class="mut">Tudo lido.</p>';
+}
+function showRes(r){const el=$("res");if(!r){el.className="";el.innerHTML="";return}const m=matchOf(r);
+ if(m){el.className="show r-ok";el.innerHTML='<span class="big">Nota cancelada · NF '+esc(r.num)+'</span><small>'+esc(m.m)+(m.o?' · pedido '+esc(m.o):'')+'</small>'}
+ else{el.className="show r-bad";el.innerHTML='<span class="big">NÃO RASGUE ESSA NOTA</span><small>NF '+esc(r.num)+' não pertence a nenhum pedido cancelado conhecido.'+(PEND.length?' Se for uma das notas de ML sem número, vincule abaixo.':'')+'</small>'}
+ try{navigator.vibrate&&navigator.vibrate(m?60:[200,100,200])}catch(e){}}
+function say(t,cls){const m=$("msg");m.textContent=t;m.style.color=cls=="bad"?"var(--bad)":cls=="ok"?"var(--ok)":"var(--mut)"}
+// leitura de código de barras
+const hints=(()=>{try{const h=new Map();h.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[ZXing.BarcodeFormat.CODE_128,ZXing.BarcodeFormat.ITF]);h.set(ZXing.DecodeHintType.TRY_HARDER,true);return h}catch(e){return null}})();
+function loadImg(file){return new Promise((res,rej)=>{const u=URL.createObjectURL(file);const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=u})}
+function canvasOf(img,max,rot){let w=img.naturalWidth,h=img.naturalHeight;const k=Math.min(1,max/Math.max(w,h));w=Math.round(w*k);h=Math.round(h*k);const c=document.createElement("canvas");const r=rot%180!==0;c.width=r?h:w;c.height=r?w:h;const x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,c.width,c.height);x.translate(c.width/2,c.height/2);x.rotate(rot*Math.PI/180);x.drawImage(img,-w/2,-h/2,w,h);return c}
+async function decodeCanvas(c){
+ if("BarcodeDetector" in window){try{const d=new BarcodeDetector({formats:["code_128","itf"]});const r=await d.detect(c);for(const b of r){const t=(b.rawValue||"").replace(/\D/g,"");if(t.length===44)return t}}catch(e){}}
+ if(hints){try{const lum=new ZXing.HTMLCanvasElementLuminanceSource(c);const bm=new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(lum));const rd=new ZXing.MultiFormatReader();rd.setHints(hints);const t=rd.decode(bm).getText().replace(/\D/g,"");if(t.length===44)return t}catch(e){}}
+ return null}
+async function scanFile(file){
+ const img=await loadImg(file);
+ for(const max of [2000,1400,2800])for(const rot of [0,90,270,180]){const t=await decodeCanvas(canvasOf(img,max,rot));if(t)return t;await new Promise(r=>setTimeout(r,0))}
+ return null}
+async function handle(files){
+ const list=[...files];let ok=0,fail=0,dup=0;
+ for(let i=0;i<list.length;i++){say("Lendo foto "+(i+1)+" de "+list.length+"…");
+  try{const ch=await scanFile(list[i]);if(!ch){fail++;continue}const r=add(ch,"foto");if(r=="ok"){ok++;showRes(recs[0])}else if(r=="dup"){dup++;const p=parse(ch);showRes(recs.find(x=>x.chave===p.chave))}else fail++}catch(e){fail++}}
+ const parts=[];if(ok)parts.push(ok+" nota"+(ok>1?"s":"")+" lida"+(ok>1?"s":""));if(dup)parts.push(dup+" já estava"+(dup>1?"m":"")+" na lista");if(fail)parts.push(fail+" sem leitura (chegue mais perto, com luz, ou digite a chave)");
+ say(parts.join(" · ")||"Nada lido.",fail&&!ok?"bad":ok?"ok":"");
+}
+["cam","gal"].forEach(id=>$(id).addEventListener("change",e=>{if(e.target.files.length)handle(e.target.files);e.target.value=""}));
+$("camBtn").addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();$("cam").click()}});
+$("manBtn").onclick=()=>{const r=add($("man").value,"manual");const t={ok:["Nota adicionada.","ok"],dup:["Essa nota já está na lista.",""],inv:["A chave precisa ter 44 dígitos.","bad"],dv:["Chave inválida (dígito verificador não confere). Confira a digitação.","bad"]}[r];say(t[0],t[1]);if(r=="ok"){$("man").value="";showRes(recs[0])}};
+$("clr").onclick=()=>{if($("clr").dataset.arm){recs=[];save();render();delete $("clr").dataset.arm;$("clr").textContent="Limpar";say("Lista limpa.")}else{$("clr").dataset.arm=1;$("clr").textContent="Confirmar limpar";setTimeout(()=>{delete $("clr").dataset.arm;$("clr").textContent="Limpar"},4000)}};
+$("exp").onclick=async()=>{
+ const rows=[["numero_nf","serie","chave","emissor_cnpj","mes_emissao","marketplace","pedido","situacao"]];
+ recs.forEach(r=>{const m=matchOf(r);rows.push([r.num,r.serie,r.chave,r.cnpj,r.aamm,m?m.m:"",m?m.o:"",m?"cancelado":"fora da lista"])});
+ const csv="﻿"+rows.map(x=>x.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(";")).join("\n");
+ try{const b=new Blob([csv],{type:"text/csv;charset=utf-8"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="nf_lidas_cancelados.csv";document.body.appendChild(a);a.click();a.remove();say("CSV gerado.","ok");return}catch(e){}
+ try{await navigator.clipboard.writeText(csv);say("Download indisponível aqui. CSV copiado, cole numa planilha.")}catch(e){say("Download indisponível. Use Digitar/Copiar a lista da tela.","bad")}
+};
+function beep(ok){try{const a=new (window.AudioContext||window.webkitAudioContext)();const o=a.createOscillator(),g=a.createGain();o.connect(g);g.connect(a.destination);o.frequency.value=ok?880:200;g.gain.value=.15;o.start();o.stop(a.currentTime+(ok?.12:.5))}catch(e){}}
+function wedgeGo(){const w=$("wedge");const v=w.value.replace(/\D/g,"");if(v.length<44){return}w.value="";const r=add(v.slice(0,44),"leitor");
+ if(r=="ok"){showRes(recs[0]);beep(!!matchOf(recs[0]));say("Lida.","ok")}
+ else if(r=="dup"){const p=parse(v.slice(0,44));const x=recs.find(y=>y.chave===p.chave);showRes(x);beep(!!matchOf(x));say("Essa nota já tinha sido lida.")}
+ else{say(r=="dv"?"Chave inválida (leia de novo).":"Leitura incompleta, leia de novo.","bad");beep(false)}
+ w.focus()}
+$("wedge").addEventListener("input",()=>{if($("wedge").value.replace(/\D/g,"").length>=44)wedgeGo()});
+$("wedge").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();wedgeGo();$("wedge").value=""}});
+let reader=null,lastC="",lastT=0;
+function processCode(v){const ch=v.replace(/\D/g,"").slice(0,44);if(ch.length<44)return;const p=parse(ch);if(!p)return;
+ const r=add(ch,"câmera");let x;
+ if(r=="ok")x=recs[0];else if(r=="dup")x=recs.find(y=>y.chave===p.chave);else{say("Chave inválida (leia de novo).","bad");beep(false);return}
+ showRes(x);beep(!!matchOf(x));say(r=="ok"?"Lida.":"Essa nota já tinha sido lida.",r=="ok"?"ok":"")}
+let stream=null,loopT=null,busy=false;
+async function camStart(){
+ try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}},audio:false});
+  const v=$("vid");v.srcObject=stream;await v.play();v.style.display="block";$("camOn").hidden=true;$("camOff").hidden=false;say("Câmera ligada. Aponte para o código de barras.");
+  loopT=setInterval(async()=>{if(busy||!v.videoWidth)return;busy=true;try{const k=Math.min(1,1600/v.videoWidth);const c=document.createElement("canvas");c.width=Math.round(v.videoWidth*k);c.height=Math.round(v.videoHeight*k);c.getContext("2d").drawImage(v,0,0,c.width,c.height);
+   const t=await decodeCanvas(c);const now=Date.now();if(t&&(t!==lastC||now-lastT>4000)){lastC=t;lastT=now;processCode(t)}}catch(e){}busy=false},250)
+ }catch(e){camStop();say("Não consegui abrir a câmera: "+(e&&e.name==="NotAllowedError"?"permissão negada. Libere a câmera no navegador.":"abra este arquivo no Chrome e libere a câmera."),"bad")}}
+function camStop(){clearInterval(loopT);loopT=null;try{stream&&stream.getTracks().forEach(t=>t.stop())}catch(e){}stream=null;$("vid").style.display="none";$("camOn").hidden=false;$("camOff").hidden=true}
+$("camOn").onclick=camStart;$("camOff").onclick=()=>{camStop();say("Câmera desligada.")};
+render();
+</script></body></html>
