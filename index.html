@@ -48,7 +48,7 @@ details summary{cursor:pointer;color:var(--acc);font-weight:500}
 </style>
 </head><body>
 <main>
-<header><h1>Leitor de NF dos cancelados</h1><p class="mut">Fotografe o código de barras da DANFE impressa. O sistema lê a chave de 44 dígitos, tira o número da NF e confere com os pedidos cancelados do ML e da Shopee.</p></header>
+<header><h1>Leitor de NF dos cancelados</h1><p class="mut">Escaneie o código de barras da DANFE impressa. O sistema lê a chave de 44 dígitos, tira o número da NF e confere com os pedidos cancelados do ML e da Shopee.</p></header>
 
 <section class="card">
 <video id="vid" playsinline muted style="width:100%;border-radius:8px;background:#000;display:none;max-height:46vh;object-fit:cover"></video>
@@ -59,10 +59,7 @@ details summary{cursor:pointer;color:var(--acc);font-weight:500}
 <section class="card">
 <label for="wedge" class="small"><b>Leitor de código de barras (USB ou Bluetooth)</b>: toque no campo e passe o leitor na nota. A leitura é automática.</label>
 <input id="wedge" type="text" inputmode="none" autocomplete="off" placeholder="Campo do leitor: aponte e leia" autofocus>
-<label class="btn" for="cam" id="camBtn" tabindex="0">Fotografar NF</label>
-<input id="cam" type="file" accept="image/*" capture="environment" multiple>
-<div class="acts"><label class="btn sec" for="gal">Escolher fotos da galeria</label><input id="gal" type="file" accept="image/*" multiple></div>
-<p id="msg" class="small" role="status" aria-live="polite">Aponte para o código de barras, com a nota bem aberta e sem dobra sobre as barras.</p>
+<p id="msg" class="small" role="status" aria-live="polite">Com a nota bem aberta e sem dobra sobre as barras, aponte a câmera para o código.</p>
 </section>
 
 <section id="res" role="alert" aria-live="assertive"></section>
@@ -75,7 +72,7 @@ details summary{cursor:pointer;color:var(--acc);font-weight:500}
 
 <section class="card">
 <div class="sec-h"><h2>Notas lidas</h2><div class="acts"><button class="btn sec" id="exp">Exportar CSV</button><button class="btn sec" id="clr">Limpar</button></div></div>
-<div id="list" style="display:flex;flex-direction:column;gap:8px"><p class="mut">Nenhuma nota lida ainda. Toque em "Fotografar NF" para começar.</p></div>
+<div id="list" style="display:flex;flex-direction:column;gap:8px"><p class="mut">Nenhuma nota lida ainda. Toque em "Ligar câmera e escanear" para começar.</p></div>
 </section>
 
 <section class="card">
@@ -110,7 +107,7 @@ function render(){
  const total=Object.keys(NF).length+PEND.length;const got=new Set(recs.map(r=>r.link||r.num).filter(k=>NF[k]||PEND.some(x=>x.o===k)));
  $("progTxt").textContent=got.size+" de "+total+" notas esperadas";$("barI").style.width=(100*got.size/total)+"%";
  const L=$("list");
- if(!recs.length){L.innerHTML='<p class="mut">Nenhuma nota lida ainda. Toque em "Fotografar NF" para começar.</p>'}
+ if(!recs.length){L.innerHTML='<p class="mut">Nenhuma nota lida ainda. Toque em "Ligar câmera e escanear" para começar.</p>'}
  else L.innerHTML=recs.map((r,i)=>{const m=matchOf(r);
   let tag,body;
   if(m){tag='<span class="tag t-ok">'+esc(m.m)+(m.manual?" · vinculada":"")+'</span>';body='<div class="small">Pedido cancelado'+(m.o?' '+esc(m.o):'')+'</div>'}
@@ -149,8 +146,6 @@ async function handle(files){
  const parts=[];if(ok)parts.push(ok+" nota"+(ok>1?"s":"")+" lida"+(ok>1?"s":""));if(dup)parts.push(dup+" já estava"+(dup>1?"m":"")+" na lista");if(fail)parts.push(fail+" sem leitura (chegue mais perto, com luz, ou digite a chave)");
  say(parts.join(" · ")||"Nada lido.",fail&&!ok?"bad":ok?"ok":"");if(fail&&!ok&&!dup)retry("Não consegui ler o código de barras da foto. Fotografe mais perto, reto e com luz.");
 }
-["cam","gal"].forEach(id=>$(id).addEventListener("change",e=>{if(e.target.files.length)handle(e.target.files);e.target.value=""}));
-$("camBtn").addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();$("cam").click()}});
 $("manBtn").onclick=()=>{const r=add($("man").value,"manual");const t={ok:["Nota adicionada.","ok"],dup:["Essa nota já está na lista.",""],inv:["A chave precisa ter 44 dígitos.","bad"],dv:["Chave inválida (dígito verificador não confere). Confira a digitação.","bad"]}[r];say(t[0],t[1]);if(r=="ok"){$("man").value="";showRes(recs[0])}else if(r=="dup"){showRes(recs.find(y=>y.chave===parse($("man").value).chave),true)}else retry(t[0])};
 $("clr").onclick=()=>{if($("clr").dataset.arm){recs=[];save();render();delete $("clr").dataset.arm;$("clr").textContent="Limpar";say("Lista limpa.")}else{$("clr").dataset.arm=1;$("clr").textContent="Confirmar limpar";setTimeout(()=>{delete $("clr").dataset.arm;$("clr").textContent="Limpar"},4000)}};
 $("exp").onclick=async()=>{
