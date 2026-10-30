@@ -39,6 +39,9 @@ details summary{cursor:pointer;color:var(--acc);font-weight:500}
 #res.show{display:flex}
 #res .big{font-size:24px;line-height:1.15;text-wrap:balance}
 #res.r-bad{background:var(--bad);color:#fff}
+#res.r-warn{background:var(--warn);color:#fff}
+#res.r-info{background:var(--card);color:var(--fg);border:1px solid var(--line)}
+#res .big{letter-spacing:.2px}
 #res.r-ok{background:var(--okbg);color:var(--ok);border:1px solid var(--ok)}
 #res small{font-weight:500;font-size:14px;opacity:.95}
 .row.nocanc{border-color:var(--bad);border-width:2px}
@@ -118,12 +121,14 @@ function render(){
  L.querySelectorAll(".lk").forEach(s=>s.onchange=()=>{if(s.value){recs[+s.dataset.i].link=s.value;save();showRes(recs[+s.dataset.i]);render()}});
  const M=$("missList");const gotN=new Set(recs.map(r=>r.num));
  const miss=Object.entries(NF).filter(([n])=>!gotN.has(n)).sort((a,b)=>a[0]-b[0]);
- M.innerHTML=miss.map(([n,v])=>'<div><span class="mono">NF '+n+'</span><span>'+v.m+' · '+esc(v.o)+'</span></div>').join("")+PEND.filter(x=>!recs.some(r=>r.link===x.o)).map(x=>'<div><span class="mono">nº ?</span><span>ML · '+x.o+'</span></div>').join("")||'<p class="mut">Tudo lido.</p>';
+ M.innerHTML=miss.map(([n,v])=>'<div><span class="mono">NF '+n+'</span><span>'+v.m+'</span></div>').join("")+PEND.filter(x=>!recs.some(r=>r.link===x.o)).map(x=>'<div><span class="mono">nº ?</span><span>ML · '+x.o+'</span></div>').join("")||'<p class="mut">Tudo lido.</p>';
 }
-function showRes(r){const el=$("res");if(!r){el.className="";el.innerHTML="";return}const m=matchOf(r);
- if(m){el.className="show r-ok";el.innerHTML='<span class="big">Nota cancelada · NF '+esc(r.num)+'</span><small>'+esc(m.m)+(m.o?' · pedido '+esc(m.o):'')+'</small>'}
- else{el.className="show r-bad";el.innerHTML='<span class="big">NÃO RASGUE ESSA NOTA</span><small>NF '+esc(r.num)+' não pertence a nenhum pedido cancelado conhecido.'+(PEND.length?' Se for uma das notas de ML sem número, vincule abaixo.':'')+'</small>'}
+function flash(cls,title,sub){const el=$("res");el.className="show "+cls;el.innerHTML='<span class="big">'+title+'</span><small>'+sub+'</small>';window.scrollTo({top:0,behavior:"smooth"})}
+function showRes(r,dup){if(!r){const el=$("res");el.className="";el.innerHTML="";return}const m=matchOf(r);
+ if(m){flash("r-ok","DEU CERTO · NF "+esc(r.num),(dup?"Essa nota já tinha sido lida. ":"")+"Nota de pedido cancelado ("+esc(m.m)+")"+(m.o?" · pedido "+esc(m.o):""))}
+ else{flash("r-bad","NOTA FORA DE LISTA","NF "+esc(r.num)+" não é de pedido cancelado. Não rasgue essa nota."+(PEND.length?" Se for uma das notas do ML sem número, vincule abaixo.":""))}
  try{navigator.vibrate&&navigator.vibrate(m?60:[200,100,200])}catch(e){}}
+function retry(why){flash("r-warn","TENTE NOVAMENTE",why||"Não consegui ler a nota.");beep(false);try{navigator.vibrate&&navigator.vibrate([120,80,120])}catch(e){}}
 function say(t,cls){const m=$("msg");m.textContent=t;m.style.color=cls=="bad"?"var(--bad)":cls=="ok"?"var(--ok)":"var(--mut)"}
 // leitura de código de barras
 const hints=(()=>{try{const h=new Map();h.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[ZXing.BarcodeFormat.CODE_128,ZXing.BarcodeFormat.ITF]);h.set(ZXing.DecodeHintType.TRY_HARDER,true);return h}catch(e){return null}})();
@@ -140,13 +145,13 @@ async function scanFile(file){
 async function handle(files){
  const list=[...files];let ok=0,fail=0,dup=0;
  for(let i=0;i<list.length;i++){say("Lendo foto "+(i+1)+" de "+list.length+"…");
-  try{const ch=await scanFile(list[i]);if(!ch){fail++;continue}const r=add(ch,"foto");if(r=="ok"){ok++;showRes(recs[0])}else if(r=="dup"){dup++;const p=parse(ch);showRes(recs.find(x=>x.chave===p.chave))}else fail++}catch(e){fail++}}
+  try{const ch=await scanFile(list[i]);if(!ch){fail++;continue}const r=add(ch,"foto");if(r=="ok"){ok++;showRes(recs[0])}else if(r=="dup"){dup++;const p=parse(ch);showRes(recs.find(x=>x.chave===p.chave),true)}else fail++}catch(e){fail++}}
  const parts=[];if(ok)parts.push(ok+" nota"+(ok>1?"s":"")+" lida"+(ok>1?"s":""));if(dup)parts.push(dup+" já estava"+(dup>1?"m":"")+" na lista");if(fail)parts.push(fail+" sem leitura (chegue mais perto, com luz, ou digite a chave)");
- say(parts.join(" · ")||"Nada lido.",fail&&!ok?"bad":ok?"ok":"");
+ say(parts.join(" · ")||"Nada lido.",fail&&!ok?"bad":ok?"ok":"");if(fail&&!ok&&!dup)retry("Não consegui ler o código de barras da foto. Fotografe mais perto, reto e com luz.");
 }
 ["cam","gal"].forEach(id=>$(id).addEventListener("change",e=>{if(e.target.files.length)handle(e.target.files);e.target.value=""}));
 $("camBtn").addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();$("cam").click()}});
-$("manBtn").onclick=()=>{const r=add($("man").value,"manual");const t={ok:["Nota adicionada.","ok"],dup:["Essa nota já está na lista.",""],inv:["A chave precisa ter 44 dígitos.","bad"],dv:["Chave inválida (dígito verificador não confere). Confira a digitação.","bad"]}[r];say(t[0],t[1]);if(r=="ok"){$("man").value="";showRes(recs[0])}};
+$("manBtn").onclick=()=>{const r=add($("man").value,"manual");const t={ok:["Nota adicionada.","ok"],dup:["Essa nota já está na lista.",""],inv:["A chave precisa ter 44 dígitos.","bad"],dv:["Chave inválida (dígito verificador não confere). Confira a digitação.","bad"]}[r];say(t[0],t[1]);if(r=="ok"){$("man").value="";showRes(recs[0])}else if(r=="dup"){showRes(recs.find(y=>y.chave===parse($("man").value).chave),true)}else retry(t[0])};
 $("clr").onclick=()=>{if($("clr").dataset.arm){recs=[];save();render();delete $("clr").dataset.arm;$("clr").textContent="Limpar";say("Lista limpa.")}else{$("clr").dataset.arm=1;$("clr").textContent="Confirmar limpar";setTimeout(()=>{delete $("clr").dataset.arm;$("clr").textContent="Limpar"},4000)}};
 $("exp").onclick=async()=>{
  const rows=[["numero_nf","serie","chave","emissor_cnpj","mes_emissao","marketplace","pedido","situacao"]];
@@ -158,24 +163,24 @@ $("exp").onclick=async()=>{
 function beep(ok){try{const a=new (window.AudioContext||window.webkitAudioContext)();const o=a.createOscillator(),g=a.createGain();o.connect(g);g.connect(a.destination);o.frequency.value=ok?880:200;g.gain.value=.15;o.start();o.stop(a.currentTime+(ok?.12:.5))}catch(e){}}
 function wedgeGo(){const w=$("wedge");const v=w.value.replace(/\D/g,"");if(v.length<44){return}w.value="";const r=add(v.slice(0,44),"leitor");
  if(r=="ok"){showRes(recs[0]);beep(!!matchOf(recs[0]));say("Lida.","ok")}
- else if(r=="dup"){const p=parse(v.slice(0,44));const x=recs.find(y=>y.chave===p.chave);showRes(x);beep(!!matchOf(x));say("Essa nota já tinha sido lida.")}
- else{say(r=="dv"?"Chave inválida (leia de novo).":"Leitura incompleta, leia de novo.","bad");beep(false)}
+ else if(r=="dup"){const p=parse(v.slice(0,44));const x=recs.find(y=>y.chave===p.chave);showRes(x,true);beep(!!matchOf(x));say("Essa nota já tinha sido lida.")}
+ else{retry("Leitura incompleta ou errada. Passe o leitor de novo.")}
  w.focus()}
 $("wedge").addEventListener("input",()=>{if($("wedge").value.replace(/\D/g,"").length>=44)wedgeGo()});
 $("wedge").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();wedgeGo();$("wedge").value=""}});
-let reader=null,lastC="",lastT=0;
+let reader=null,lastC="",lastT=0,lastRead=0,hintT=null;
 function processCode(v){const ch=v.replace(/\D/g,"").slice(0,44);if(ch.length<44)return;const p=parse(ch);if(!p)return;
  const r=add(ch,"câmera");let x;
- if(r=="ok")x=recs[0];else if(r=="dup")x=recs.find(y=>y.chave===p.chave);else{say("Chave inválida (leia de novo).","bad");beep(false);return}
- showRes(x);beep(!!matchOf(x));say(r=="ok"?"Lida.":"Essa nota já tinha sido lida.",r=="ok"?"ok":"")}
+ if(r=="ok")x=recs[0];else if(r=="dup")x=recs.find(y=>y.chave===p.chave);else{retry("A leitura veio incompleta ou errada. Chegue mais perto, com o código reto e bem iluminado.");return}
+ lastRead=Date.now();showRes(x,r=="dup");beep(!!matchOf(x));say(r=="ok"?"Lida.":"Essa nota já tinha sido lida.",r=="ok"?"ok":"")}
 let stream=null,loopT=null,busy=false;
 async function camStart(){
  try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}},audio:false});
-  const v=$("vid");v.srcObject=stream;await v.play();v.style.display="block";$("camOn").hidden=true;$("camOff").hidden=false;say("Câmera ligada. Aponte para o código de barras.");
+  const v=$("vid");v.srcObject=stream;await v.play();v.style.display="block";$("camOn").hidden=true;$("camOff").hidden=false;say("Câmera ligada. Aponte para o código de barras.");lastRead=Date.now();flash("r-info","PROCURANDO O CÓDIGO…","Aponte a câmera para o código de barras da nota.");clearInterval(hintT);hintT=setInterval(()=>{if(stream&&Date.now()-lastRead>9000){lastRead=Date.now();retry("Não achei o código de barras. Aproxime a nota, deixe o código reto e sem reflexo.")}},1000);
   loopT=setInterval(async()=>{if(busy||!v.videoWidth)return;busy=true;try{const k=Math.min(1,1600/v.videoWidth);const c=document.createElement("canvas");c.width=Math.round(v.videoWidth*k);c.height=Math.round(v.videoHeight*k);c.getContext("2d").drawImage(v,0,0,c.width,c.height);
    const t=await decodeCanvas(c);const now=Date.now();if(t&&(t!==lastC||now-lastT>4000)){lastC=t;lastT=now;processCode(t)}}catch(e){}busy=false},250)
  }catch(e){camStop();say("Não consegui abrir a câmera: "+(e&&e.name==="NotAllowedError"?"permissão negada. Libere a câmera no navegador.":"abra este arquivo no Chrome e libere a câmera."),"bad")}}
-function camStop(){clearInterval(loopT);loopT=null;try{stream&&stream.getTracks().forEach(t=>t.stop())}catch(e){}stream=null;$("vid").style.display="none";$("camOn").hidden=false;$("camOff").hidden=true}
+function camStop(){clearInterval(hintT);clearInterval(loopT);loopT=null;try{stream&&stream.getTracks().forEach(t=>t.stop())}catch(e){}stream=null;$("vid").style.display="none";$("camOn").hidden=false;$("camOff").hidden=true}
 $("camOn").onclick=camStart;$("camOff").onclick=()=>{camStop();say("Câmera desligada.")};
 render();
 </script></body></html>
